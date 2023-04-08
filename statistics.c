@@ -26,13 +26,11 @@ static int do_statistic(int dev_fd, double *total_utilization, double *gc_utiliz
 					int length, double sampling_interval, double sampling_time)
 {
 	int err;
-	int start_time = time(NULL);
+	// int start_time = time(NULL);
 	int writer = 0;
 	while (true) {
 		if (writer >= length) break;
-		int now_time = time(NULL);
-		if (now_time - start_time < sampling_interval) continue;
-		start_time = now_time;
+		sleep(sampling_interval);
 		// do nvme admin command submti
 		unsigned int result;
 		err = nvme_sct_op(dev_fd, 3, 1, 0, 0, 0, &result);
@@ -71,8 +69,8 @@ int main()
 	// statistic array
 	double *total_utilization = NULL;
 	double *gc_utilization = NULL;
-	double sampling_interval = 1; // seconds
-	double sampling_time = 10; // seconds
+	double sampling_interval = 2; // seconds
+	double sampling_time = 500; // seconds
 	int length = sampling_time/sampling_interval;
     total_utilization = malloc(sizeof(double)*length);
     gc_utilization = malloc(sizeof(double)*length);
