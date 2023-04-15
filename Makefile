@@ -1,9 +1,5 @@
-clean:
-	rm *.o
-
-all:
-	gcc -static -L/usr/local/lib/x86_64-linux-gnu/ statistics.c nvme.c -o statistics -l:libnvme.a
-
-upload:
-	gcc -static -L/usr/local/lib/x86_64-linux-gnu/ statistics.c nvme.c -o statistics -l:libnvme.a
-	scp -P 8080 statistics femu@localhost:/home/femu/
+obj-m += flash_monitor.o
+ccflags-y += -I/usr/src/linux-headers-5.4.0-64/include/
+ccflags-y += -I$(src)/nvme
+kernel:
+	make -C /lib/modules/`uname -r`/build/ M=$(PWD) modules
