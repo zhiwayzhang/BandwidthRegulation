@@ -26,14 +26,21 @@ static int do_statistic(int dev_fd, double *total_utilization, double *gc_utiliz
 					int length, double sampling_interval, double sampling_time)
 {
 	int err;
-	// int start_time = time(NULL);
+	int start_time = time(NULL);
+	double total = 0;
+	clock_t start, end;
 	int writer = 0;
+	unsigned int result = 0;
 	while (true) {
 		if (writer >= length) break;
-		sleep(sampling_interval);
+		int now_time = time(NULL);
+		if (now_time - start_time < sampling_interval) continue;
+		start_time = now_time;
 		// do nvme admin command submti
-		unsigned int result;
+		start = clock();
 		err = nvme_sct_op(dev_fd, 3, 1, 0, 0, 0, &result);
+		end = clock();
+		total += (double)(end - start)/CLOCKS_PER_SEC;
 		if (err < 0) {
 			printf("errno: %d\n", err);
 			return -1;
@@ -43,9 +50,9 @@ static int do_statistic(int dev_fd, double *total_utilization, double *gc_utiliz
 		gc_utilization[writer] = 1.0*(result % MOD)/MOD;
 		total_utilization[writer] = 1.0*result/MOD/MOD;
 		if (total_utilization[writer] > 1.0) total_utilization[writer] = 1.0;
-		printf("%d: t:%lf gc:%lf\n", writer, total_utilization[writer], gc_utilization[writer]);
 		writer++;
 	}
+	printf("total = %lf ms\n", total*1000);
 	return 0;
 }
 
@@ -71,7 +78,7 @@ int main()
 	double *total_utilization = NULL;
 	double *gc_utilization = NULL;
 	double sampling_interval = 1; // seconds
-	double sampling_time = 300; // seconds
+	double sampling_time = 60; // seconds
 	int length = sampling_time/sampling_interval;
     total_utilization = malloc(sizeof(double)*length);
     gc_utilization = malloc(sizeof(double)*length);

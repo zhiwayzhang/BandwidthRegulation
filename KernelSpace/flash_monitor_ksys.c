@@ -99,12 +99,12 @@ int init_monitor(void)
 
 void monitor_exit(void) 
 {
-    int ret;
-    ret = kthread_stop(flash_monitor);
-    if (!ret) {
+    // int ret;
+    // ret = kthread_stop(flash_monitor);
+    // if (!ret) {
 		printk(KERN_INFO "Thread Stopped!");
 		printk("monitor exit successfully !\n");
-	}
+	// }
 }
 
 MODULE_LICENSE("GPL");
