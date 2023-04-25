@@ -5,71 +5,65 @@
 #include <linux/syscalls.h>
 #include <linux/fs.h>
 #include <linux/file.h>
-#include <linux/ktime.h>
 #include <linux/delay.h>
 #include <linux/kallsyms.h>
 #include <flash_monitor.h>
 static struct task_struct *flash_monitor;
 
-
 int flash_monitor_main(void *data)
 {
-    // for statistic
-    long long total = 0; 
-	ktime_t start_time;
-	ktime_t end_time;
-    // kernel sys calls
+	// kernel sys calls
 	long (*do_sys_open)(int dfd, const char __user *filename, int flags, umode_t mode);
 	int (*ksys_ioctl)(unsigned int fd, unsigned int cmd, unsigned long arg);
-	do_sys_open = (void*)kallsyms_lookup_name("do_sys_open");
-	ksys_ioctl = (void*)kallsyms_lookup_name("ksys_ioctl");
-    // do sys open
-    // open fd of /dev/nvme0n1
+	do_sys_open = (void *)kallsyms_lookup_name("do_sys_open");
+	ksys_ioctl = (void *)kallsyms_lookup_name("ksys_ioctl");
+	// do sys open
+	// open fd of /dev/nvme0n1
 	int fd = do_sys_open(-100, "/dev/nvme0n1", O_RDONLY | O_LARGEFILE, 0660);
-	if (fd < 0) {
+	if (fd < 0)
+	{
 		printk("open device failed errno = %d !\n", fd);
 		goto free;
 		return 0;
 	}
-    // for nvme admin request
+	// for nvme admin request
 	struct nvme_passthru_cmd cmd = {
-		.opcode		= 3,
-		.flags		= 0,
-		.rsvd1		= 0,
-		.nsid		= 0x0,
-		.cdw2		= 0,
-		.cdw3		= 0,
-		.metadata	= NULL,
-		.addr		= NULL,
-		.metadata_len	= 0,
-		.data_len	= 0,
-		.cdw10		= 1,
-		.cdw11		= 0,
-		.cdw12		= 0,
-		.cdw13		= 0,
-		.cdw14		= 0,
-		.cdw15		= 0,
-		.timeout_ms	= 0,
+		.opcode = 3,
+		.flags = 0,
+		.rsvd1 = 0,
+		.nsid = 0x0,
+		.cdw2 = 0,
+		.cdw3 = 0,
+		.metadata = NULL,
+		.addr = NULL,
+		.metadata_len = 0,
+		.data_len = 0,
+		.cdw10 = 1,
+		.cdw11 = 0,
+		.cdw12 = 0,
+		.cdw13 = 0,
+		.cdw14 = 0,
+		.cdw15 = 0,
+		.timeout_ms = 0,
 	};
-    int counter = 0;
-	int status = 1;
-    while (!kthread_should_stop()) {
-		start_time = ktime_get();
+	int status = 0;
+	while (!kthread_should_stop())
+	{
 		status = ksys_ioctl(fd, NVME_IOCTL_ADMIN_CMD, &cmd);
-		end_time = ktime_get();
-		total += ktime_to_ns(ktime_sub(end_time, start_time));
-		if (status < 0) {
+		if (status < 0)
+		{
 			break;
 		}
 		printk("result = %u\n", counter, le32_to_cpu(cmd.result));
 		ssleep(1);
-    }
-    // close fd
+	}
+	// close fd
 	int res = ksys_close(fd);
-	if (res < 0) {
+	if (res < 0)
+	{
 		printk("close fd failed !\n");
 		return 0;
-	} 
+	}
 free:
 	fdput(fdget(fd));
 	printk("closed fd !\n");
@@ -81,25 +75,27 @@ free:
 
 int init_monitor(void)
 {
-    flash_monitor = kthread_create(flash_monitor_main, NULL, "nand_flash_util");
-    if ((flash_monitor)) {
-        printk(KERN_INFO "Start");
-        wake_up_process(flash_monitor);
+	flash_monitor = kthread_create(flash_monitor_main, NULL, "nand_flash_util");
+	if ((flash_monitor))
+	{
+		printk(KERN_INFO "Start");
+		wake_up_process(flash_monitor);
 		printk("kthread start !\n");
-    }
-    return 0;
+	}
+	return 0;
 }
 
 void monitor_exit(void)
 {
 	int ret;
-    ret = kthread_stop(flash_monitor);
-    if (!ret) {
-        printk("Thread Stopped !\n");
+	ret = kthread_stop(flash_monitor);
+	if (!ret)
+	{
+		printk("Thread Stopped !\n");
 		printk("monitor exit successfully !\n");
-        return;
-    }
-    printk("Thread Stop Failed");
+		return;
+	}
+	printk("Thread Stop Failed");
 }
 
 MODULE_LICENSE("GPL");
