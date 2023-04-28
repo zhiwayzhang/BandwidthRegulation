@@ -72,3 +72,8 @@ struct nvme_passthru_cmd64
 #define NVME_IOCTL_RESCAN _IO('N', 0x46)
 #define NVME_IOCTL_ADMIN64_CMD _IOWR('N', 0x47, struct nvme_passthru_cmd64)
 #define NVME_IOCTL_IO64_CMD _IOWR('N', 0x48, struct nvme_passthru_cmd64)
+#define MAX_BANDWIDTH 400 // MB per second
+#define MOD 10000
+#define SAMPLING_TIMES 5 // times
+#define SAMPLING_INTERVAL 1 // second
+#define UTIL_THRESHOLD 0.2
