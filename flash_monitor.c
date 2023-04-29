@@ -35,6 +35,27 @@ rwlock_t lock;
 
 int bw_regulator_main(void *data) 
 {
+	// kernel sys calls
+	long (*do_rmdir)(int dfd, const char __user *pathname);
+	long (*do_mkdirat)(int dfd, const char __user *pathname, umode_t mode);
+	off_t (*ksys_lseek)(unsigned int fd, off_t offset, unsigned int whence);
+	ssize_t (*ksys_write)(unsigned int fd, const char __user *buf, size_t count);
+	long (*do_sys_open)(int dfd, const char __user *filename, int flags, umode_t mode);
+	// kallsyms lookup by name
+	do_sys_open = (void *)kallsyms_lookup_name("do_sys_open");
+	do_rmdir = (void *)kallsyms_lookup_name("do_rmdir");
+	ksys_lseek = (void *)kallsyms_lookup_name("ksys_lseek");
+	do_mkdirat = (void *)kallsyms_lookup_name("do_mkdirat");
+	ksys_write = (void *)kallsyms_lookup_name("ksys_write");
+	// init cgroup fs
+	int err = do_mkdirat(-100, "/sys/fs/cgroup/front", 0755);
+	if (err < 0) {
+		printk("mk /sys/fs/cgroup/front Failed !\n");
+	}
+	err = do_mkdirat(-100, "/sys/fs/cgroup/back", 0755);
+	if (err < 0) {
+		printk("mk /sys/fs/cgroup/back Failed !\n");
+	}
 	// Flag for Status
 	bool THRESHOLD_ENABLED = false;
 	unsigned int result = 0;
@@ -59,23 +80,32 @@ int bw_regulator_main(void *data)
 		}
 		ssleep(1);
 	}
+	// remove cgroup fs
+	err = do_rmdir(-100, "/sys/fs/cgroup/front");
+	if (err < 0) {
+		printk("rmdir /sys/fs/cgroup/front Failed !\n");
+	}
+	err = do_rmdir(-100, "/sys/fs/cgroup/back");
+	if (err < 0) {
+		printk("rmdir /sys/fs/cgroup/back Failed !\n");
+	}
+	// clear pointer
+	do_sys_open = NULL;
+	do_rmdir = NULL;
+	ksys_lseek = NULL;
+	do_mkdirat = NULL;
+	ksys_write = NULL;
 	return 0;
 }
 
 int flash_monitor_main(void *data)
 {
 	// kernel sys calls
-	long (*do_mkdirat)(int dfd, const char __user *pathname, umode_t mode);
-	ssize_t (*ksys_write)(unsigned int fd, const char __user *buf, size_t count);
 	long (*do_sys_open)(int dfd, const char __user *filename, int flags, umode_t mode);
 	int (*ksys_ioctl)(unsigned int fd, unsigned int cmd, unsigned long arg);
-	off_t (*ksys_lseek)(unsigned int fd, off_t offset, unsigned int whence);
 	// kallsyms lookup by name
 	do_sys_open = (void *)kallsyms_lookup_name("do_sys_open");
 	ksys_ioctl = (void *)kallsyms_lookup_name("ksys_ioctl");
-	ksys_lseek = (void *)kallsyms_lookup_name("ksys_lseek");
-	do_mkdirat = (void *)kallsyms_lookup_name("do_mkdirat");
-	ksys_write = (void *)kallsyms_lookup_name("ksys_write");
 	// do sys open
 	// open fd of /dev/nvme0n1
 	int fd = do_sys_open(-100, "/dev/nvme0n1", O_RDONLY | O_LARGEFILE, 0660);
@@ -154,9 +184,6 @@ free:
 	printk("closed fd !\n");
 	do_sys_open = NULL;
 	ksys_ioctl = NULL;
-	ksys_lseek = NULL;
-	do_mkdirat = NULL;
-	ksys_write = NULL;
 	printk("close ssd device successfully !\n");
 	return 0;
 }
