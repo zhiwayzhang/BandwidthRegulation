@@ -1,4 +1,5 @@
 #include <linux/types.h>
+#include <linux/list.h>
 
 struct nvme_user_io
 {
@@ -64,6 +65,14 @@ struct nvme_passthru_cmd64
 struct control_info {
 	int pid;
 	int tag;
+	bool in_cgroup;
+	struct list_head list;
+};
+
+struct netlink_message {
+	int opcode;
+	int pid;
+	int tag;
 };
 
 #define nvme_admin_cmd nvme_passthru_cmd
@@ -78,7 +87,15 @@ struct control_info {
 #define NVME_IOCTL_ADMIN64_CMD _IOWR('N', 0x47, struct nvme_passthru_cmd64)
 #define NVME_IOCTL_IO64_CMD _IOWR('N', 0x48, struct nvme_passthru_cmd64)
 #define MAX_BANDWIDTH 400 // MB per second
+#define THRESHOLD_BANDWIDTH 3 // # of MB per second
+#define BITS_PER_MB 1048576
 #define MOD 10000
 #define SAMPLING_TIMES 5 // times
 #define SAMPLING_INTERVAL 1 // second
 #define UTIL_THRESHOLD 0.2
+#define FRONTGROUND 0
+#define BACKGROUND 1
+#define OPCODE_ADD 0
+#define OPCODE_DETACH 1
+#define OPCODE_MODIFY 2
+#define NETLINK_USER 31

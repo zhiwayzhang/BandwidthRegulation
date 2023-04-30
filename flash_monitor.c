@@ -13,7 +13,6 @@
 #include <linux/rwlock.h>
 #include <linux/mutex.h>
 #include <flash_monitor.h>
-#define NETLINK_USER 31
 static struct task_struct *flash_monitor;
 static struct task_struct *bw_regulator;
 static struct sock *nl_sk = NULL;
@@ -23,12 +22,11 @@ rwlock_t lock;
 rwlock_t control;
 static DEFINE_MUTEX(ci_mutex);
 
-struct control_info buffer[10];
+struct netlink_message buffer[10];
 int buffer_length;
 
 static void bwset_nl_recv_msg(struct sk_buff *skb)
 {
-	printk("hello skb");
 	struct sk_buff *skb_out;
 	struct nlmsghdr *nlh;
 	int msg_size;
@@ -42,8 +40,9 @@ static void bwset_nl_recv_msg(struct sk_buff *skb)
 	msg_size = sizeof(data);
 	printk(KERN_INFO "netlink_test: Received from pid %d, size: %d\n", pid, msg_size);
 	mutex_lock(&ci_mutex);
-	buffer[buffer_length].pid = data[0];
-	buffer[buffer_length].tag = data[1];
+	buffer[buffer_length].opcode = data[0];
+	buffer[buffer_length].pid = data[1];
+	buffer[buffer_length].tag = data[2];
 	buffer_length += 1;
 	mutex_unlock(&ci_mutex);
 	printk(KERN_INFO "Received integers: %d, %d\n", data[0], data[1]);
@@ -100,28 +99,95 @@ int bw_regulator_main(void *data)
 	unsigned int result = 0;
 	double gc_util = 0;
 	double total_util = 0;
+	// init for control list
+	struct list_head control_list;
+	INIT_LIST_HEAD(&control_list);
+	struct control_info *control_entry;
+	int i;
+
 	while (!kthread_should_stop())
 	{
+		// check control buffer
+		// data from user space by netlink
+		mutex_lock(&ci_mutex);
+		for (i = 0; i < buffer_length; i++) {
+			if (buffer[i].opcode == OPCODE_ADD) {
+				struct control_info *ctrl_info;
+				ctrl_info = kmalloc(sizeof(struct control_info), GFP_KERNEL);
+				if (!ctrl_info) {
+					printk("kmalloc Failed: ctrl_info ! \n");
+					continue;
+				}
+				ctrl_info->pid = buffer[i].pid;
+				ctrl_info->tag = buffer[i].tag;
+				ctrl_info->in_cgroup = false;
+				list_add_tail(&(ctrl_info->list), &control_list);
+			} else if (buffer[i].opcode == OPCODE_DETACH) {
+				// TODO
+			}
+		}
+		mutex_unlock(&ci_mutex);
+
+		// sync with cgroup fs
+		unsigned long fd_front_procs = do_sys_open(-100, "/sys/fs/cgroup/front/cgroup.procs", O_WRONLY | O_APPEND, 0644);
+		unsigned long fd_back_procs = do_sys_open(-100, "/sys/fs/cgroup/back/cgroup.procs", O_WRONLY | O_APPEND, 0644);
+		list_for_each_entry(control_entry, &control_list, list) {
+			if (!control_entry->in_cgroup) {
+				char buf[32];
+				int len = snprintf(buf, sizeof(buf), "%d\n", control_entry->pid);
+				if (control_entry->tag == FRONTGROUND) {
+					ksys_write(fd_front_procs, buf, len);
+				} else if (control_entry->tag == BACKGROUND) {
+					ksys_write(fd_back_procs, buf, len);
+				}
+				control_entry->in_cgroup = true;
+			}
+		}
+		ksys_close(fd_front_procs);
+		ksys_close(fd_back_procs);
+
+		// get bandwidth data
 		read_lock(&lock);
 		total_util = shared_total_util_info;
 		gc_util = shared_gc_util_info;
 		read_unlock(&lock);
 		int d_total_util = total_util * MOD;
 		int d_gc_util = gc_util * MOD;
-		printk("REGULATOR: in last 5s : total=%d gc=%d\n", d_total_util, d_gc_util);
+		printk("REGULATOR: total=%d gc=%d\n", d_total_util, d_gc_util);
 		if (1 - total_util < UTIL_THRESHOLD && !THRESHOLD_ENABLED)
 		{
 			// do threshold
+			printk("Start backend bandwidth threshold ! \n");
+			char iomax[100];
+			unsigned long fd_back_iomax = do_sys_open(-100, "/sys/fs/cgroup/back/io.max", O_WRONLY | O_APPEND, 0644);
+			int len = snprintf(iomax, sizeof(iomax), "259:0 wbps=%d rbps=%d", THRESHOLD_BANDWIDTH*BITS_PER_MB, THRESHOLD_BANDWIDTH*BITS_PER_MB);
+			ksys_write(fd_back_iomax, iomax, len);
+			ksys_close(fd_back_iomax);
 			THRESHOLD_ENABLED = true;
 		}
 		if (1 - total_util > UTIL_THRESHOLD && THRESHOLD_ENABLED)
 		{
 			// disable threshold
+			printk("End backend bandwidth threshold ! \n");
+			unsigned long fd_back_iomax = do_sys_open(-100, "/sys/fs/cgroup/back/io.max", O_WRONLY | O_APPEND, 0644);
+			ksys_write(fd_back_iomax, "259:0 wbps=max rbps=max", 23);
+			ksys_close(fd_back_iomax);
 			THRESHOLD_ENABLED = false;
 		}
-		ssleep(1);
+		ssleep(5);
 	}
 	// remove cgroup fs
+	// first detach pid from root cgroup
+	unsigned long fd_root_procs = do_sys_open(-100, "/sys/fs/cgroup/cgroup.procs", O_WRONLY | O_APPEND, 0644);
+	list_for_each_entry(control_entry, &control_list, list) {
+		if (control_entry->in_cgroup) {
+			char buf[32];
+			int len = snprintf(buf, sizeof(buf), "%d\n", control_entry->pid);
+			ksys_write(fd_root_procs, buf, len);
+			control_entry->in_cgroup = false;
+		}
+	}
+	ksys_close(fd_root_procs);
 	err = do_rmdir(-100, "/sys/fs/cgroup/front");
 	if (err < 0)
 	{
@@ -138,6 +204,12 @@ int bw_regulator_main(void *data)
 	ksys_lseek = NULL;
 	do_mkdirat = NULL;
 	ksys_write = NULL;
+	// release list
+	struct control_info *ctrl_del, *tmp;
+    list_for_each_entry_safe(ctrl_del, tmp, &control_list, list) {
+        list_del(&(ctrl_del->list));
+        kfree(ctrl_del);
+    }
 	return 0;
 }
 
