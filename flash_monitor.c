@@ -26,7 +26,7 @@ static DEFINE_MUTEX(ci_mutex);
 struct control_info buffer[10];
 int buffer_length;
 
-static void my_nl_recv_msg(struct sk_buff *skb)
+static void bwset_nl_recv_msg(struct sk_buff *skb)
 {
 	printk("hello skb");
 	struct sk_buff *skb_out;
@@ -50,7 +50,7 @@ static void my_nl_recv_msg(struct sk_buff *skb)
 }
 
 static struct netlink_kernel_cfg nl_cfg = {
-    .input = my_nl_recv_msg,
+    .input = bwset_nl_recv_msg,
 };
 
 // create cgroup
