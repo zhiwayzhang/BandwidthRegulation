@@ -61,6 +61,11 @@ struct nvme_passthru_cmd64
 	__u64 result;
 };
 
+struct control_info {
+	int pid;
+	int tag;
+};
+
 #define nvme_admin_cmd nvme_passthru_cmd
 
 #define NVME_IOCTL_ID _IO('N', 0x40)
