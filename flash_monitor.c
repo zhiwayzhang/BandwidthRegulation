@@ -3,18 +3,55 @@
 #include <linux/kthread.h>
 #include <linux/init.h>
 #include <linux/syscalls.h>
+#include <linux/netlink.h>
+#include <net/net_namespace.h>
 #include <linux/fs.h>
 #include <linux/file.h>
 #include <linux/delay.h>
 #include <linux/kallsyms.h>
 #include <linux/rwlock_types.h>
 #include <linux/rwlock.h>
+#include <linux/mutex.h>
 #include <flash_monitor.h>
+#define NETLINK_USER 31
 static struct task_struct *flash_monitor;
 static struct task_struct *bw_regulator;
+static struct sock *nl_sk = NULL;
 double shared_total_util_info;
 double shared_gc_util_info;
 rwlock_t lock;
+rwlock_t control;
+static DEFINE_MUTEX(ci_mutex);
+
+struct control_info buffer[10];
+int buffer_length;
+
+static void my_nl_recv_msg(struct sk_buff *skb)
+{
+	printk("hello skb");
+	struct sk_buff *skb_out;
+	struct nlmsghdr *nlh;
+	int msg_size;
+	int *data;
+	int pid;
+	int res;
+
+	nlh = (struct nlmsghdr *)skb->data;
+	pid = nlh->nlmsg_pid; /* pid of sending process */
+	data = (int *)NLMSG_DATA(nlh);
+	msg_size = sizeof(data);
+	printk(KERN_INFO "netlink_test: Received from pid %d, size: %d\n", pid, msg_size);
+	mutex_lock(&ci_mutex);
+    buffer[buffer_length].pid = data[0];
+	buffer[buffer_length].tag = data[1];
+	buffer_length += 1;
+	mutex_unlock(&ci_mutex);
+    printk(KERN_INFO "Received integers: %d, %d\n", data[0], data[1]);
+}
+
+static struct netlink_kernel_cfg nl_cfg = {
+    .input = my_nl_recv_msg,
+};
 
 // create cgroup
 // delete cgroup (omit)
@@ -191,6 +228,16 @@ free:
 int init_monitor(void)
 {
 	rwlock_init(&lock);
+	mutex_init(&ci_mutex);
+
+	buffer_length = 0;
+	// create netlink socket
+    nl_sk = netlink_kernel_create(&init_net, NETLINK_USER, &nl_cfg);
+    if (!nl_sk) {
+        printk(KERN_ERR "Failed to create netlink socket\n");
+        return -ENOMEM;
+    }
+
 	shared_gc_util_info = 0;
 	shared_total_util_info = 0;
 	
@@ -230,6 +277,10 @@ void monitor_exit(void)
 	}
 	// rwlock_destroy(&lock);
 	printk("release lock ! \n");
+	if (nl_sk) {
+        netlink_kernel_release(nl_sk);
+    }
+	printk("release netlink socket ! \n");
 }
 
 MODULE_LICENSE("GPL");
