@@ -10,3 +10,5 @@ install:
 	cp bwset /usr/local/bin/bwset
 uninstall:
 	rm /usr/local/bin/bwset
+upload:
+	scp -P8080 flash_monitor.c flash_monitor.h Makefile bwset.c femu@localhost:/home/femu/BandwidthRegulation/
