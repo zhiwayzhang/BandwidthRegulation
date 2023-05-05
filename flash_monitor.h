@@ -87,12 +87,16 @@ struct netlink_message {
 #define NVME_IOCTL_ADMIN64_CMD _IOWR('N', 0x47, struct nvme_passthru_cmd64)
 #define NVME_IOCTL_IO64_CMD _IOWR('N', 0x48, struct nvme_passthru_cmd64)
 #define MAX_BANDWIDTH 400 // MB per second
-#define THRESHOLD_BANDWIDTH 3 // # of MB per second
+#define THRESHOLD_BANDWIDTH 10 // # of MB per second
+#define THRESHOLD_IOPS 300
+#define THRESHOLD_BANDWIDTH_WHEN_GC 1
+#define THRESHOLD_IOPS_WHEN_GC 10
 #define BITS_PER_MB 1048576
 #define MOD 10000
-#define SAMPLING_TIMES 5 // times
-#define SAMPLING_INTERVAL 1 // second
+#define SAMPLING_TIMES 3 // times
+#define SAMPLING_INTERVAL 3 // second
 #define UTIL_THRESHOLD 0.2
+#define GC_THRESHOLD 0.85
 #define FRONTGROUND 0
 #define BACKGROUND 1
 #define OPCODE_ADD 0

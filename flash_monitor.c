@@ -96,6 +96,7 @@ int bw_regulator_main(void *data)
 	}
 	// Flag for Status
 	bool THRESHOLD_ENABLED = false;
+	bool GC_THRESHOLD_ENABLED = false;
 	unsigned int result = 0;
 	double gc_util = 0;
 	double total_util = 0;
@@ -145,7 +146,7 @@ int bw_regulator_main(void *data)
 		}
 		ksys_close(fd_front_procs);
 		ksys_close(fd_back_procs);
-
+		
 		// get bandwidth data
 		read_lock(&lock);
 		total_util = shared_total_util_info;
@@ -154,6 +155,44 @@ int bw_regulator_main(void *data)
 		int d_total_util = total_util * MOD;
 		int d_gc_util = gc_util * MOD;
 		printk("REGULATOR: total=%d gc=%d\n", d_total_util, d_gc_util);
+		// Check gc util for backend & frontend threshold
+		if (gc_util/total_util > GC_THRESHOLD)
+		{
+			if (GC_THRESHOLD_ENABLED)
+				goto sleep;
+			printk("Start total bandwidth threshold ! \n");
+			char iomax[100];
+			unsigned long fd_back_iomax = do_sys_open(-100, "/sys/fs/cgroup/back/io.max", O_WRONLY | O_APPEND, 0644);
+			unsigned long fd_front_iomax = do_sys_open(-100, "/sys/fs/cgroup/front/io.max", O_WRONLY | O_APPEND, 0644);
+			// int len = snprintf(iomax, sizeof(iomax), "259:0 wbps=%d rbps=%d wiops=%d riops=%d", 
+			// 		THRESHOLD_BANDWIDTH_WHEN_GC*BITS_PER_MB, THRESHOLD_BANDWIDTH_WHEN_GC*BITS_PER_MB,
+			// 		THRESHOLD_IOPS_WHEN_GC, THRESHOLD_IOPS_WHEN_GC
+			// 	);
+			int len = snprintf(iomax, sizeof(iomax), "259:0 wbps=%d rbps=%d", 
+					THRESHOLD_BANDWIDTH_WHEN_GC*BITS_PER_MB, THRESHOLD_BANDWIDTH_WHEN_GC*BITS_PER_MB
+				);
+			ksys_write(fd_back_iomax, iomax, len);
+			ksys_close(fd_back_iomax);
+			ksys_write(fd_front_iomax, iomax, len);
+			ksys_close(fd_front_iomax);
+			GC_THRESHOLD_ENABLED = true;
+		}
+		if (gc_util/total_util < GC_THRESHOLD && GC_THRESHOLD_ENABLED)
+		{
+			printk("Disable total bandwidth threshold ! \n");
+			char iomax[100];
+			unsigned long fd_back_iomax = do_sys_open(-100, "/sys/fs/cgroup/back/io.max", O_WRONLY | O_APPEND, 0644);
+			unsigned long fd_front_iomax = do_sys_open(-100, "/sys/fs/cgroup/front/io.max", O_WRONLY | O_APPEND, 0644);
+			int len = snprintf(iomax, sizeof(iomax), "259:0 wbps=max rbps=max wiops=max wiops=max");
+			ksys_write(fd_back_iomax, iomax, len);
+			ksys_close(fd_back_iomax);
+			ksys_write(fd_front_iomax, iomax, len);
+			ksys_close(fd_front_iomax);
+			GC_THRESHOLD_ENABLED = false;
+		}
+		if (GC_THRESHOLD_ENABLED)
+			goto sleep;
+		// Check total util for backend thread threshold
 		if (1 - total_util < UTIL_THRESHOLD && !THRESHOLD_ENABLED)
 		{
 			// do threshold
@@ -174,7 +213,8 @@ int bw_regulator_main(void *data)
 			ksys_close(fd_back_iomax);
 			THRESHOLD_ENABLED = false;
 		}
-		ssleep(5);
+	sleep:
+		ssleep(10);
 	}
 	// remove cgroup fs
 	// first detach pid from root cgroup
