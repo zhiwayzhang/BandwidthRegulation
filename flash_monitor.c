@@ -220,7 +220,7 @@ int bw_regulator_main(void *data)
 		}
 	sleep:
 		if (THRESHOLD_ENABLED) ssleep(REGULATOR_INTERVAL);
-		else ssleep(REGULATOR_INTERVAL_WHEN_THRESHOLD)
+		else ssleep(REGULATOR_INTERVAL_WHEN_THRESHOLD);
 	}
 	// remove cgroup fs
 	// first detach pid from root cgroup
