@@ -3,13 +3,13 @@ ioengine=io_uring
 direct=1
 time_based=1
 runtime=60
-rw=randrw
+rw=read
 bs=4k
-numjobs=8
+numjobs=1
 iodepth=64
-size=625M
+size=6144M
 group_reporting
 
-[frontground]
+[data]
 directory=/tmp/test
-filename_format=front$jobnum
+filename_format=data$jobnum
