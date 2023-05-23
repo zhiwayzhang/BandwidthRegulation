@@ -196,25 +196,31 @@ int bw_regulator_main(void *data)
 		if (1 - total_util < UTIL_THRESHOLD && !THRESHOLD_ENABLED)
 		{
 			// do threshold
-			printk("Start backend bandwidth threshold ! \n");
+			printk("Start backend bandwidth threshold !\n");
 			char iomax[100];
 			unsigned long fd_back_iomax = do_sys_open(-100, "/sys/fs/cgroup/back/io.max", O_WRONLY | O_APPEND, 0644);
-			int len = snprintf(iomax, sizeof(iomax), "259:0 wbps=%d rbps=%d", THRESHOLD_BANDWIDTH*BITS_PER_MB, THRESHOLD_BANDWIDTH*BITS_PER_MB);
+			int len = snprintf(iomax, sizeof(iomax), "259:0 wbps=%d rbps=%d wiops=%d riops=%d", 
+					THRESHOLD_BANDWIDTH*BITS_PER_MB, 
+					THRESHOLD_BANDWIDTH*BITS_PER_MB,
+					THRESHOLD_IOPS,
+					THRESHOLD_IOPS
+				);
 			ksys_write(fd_back_iomax, iomax, len);
 			ksys_close(fd_back_iomax);
 			THRESHOLD_ENABLED = true;
 		}
-		if (1 - total_util > UTIL_THRESHOLD && THRESHOLD_ENABLED)
+		if (1 - total_util > UTIL_THRESHOLD + UTIL_THRESHOLD_TOLERANCE && THRESHOLD_ENABLED)
 		{
 			// disable threshold
-			printk("End backend bandwidth threshold ! \n");
+			printk("End backend bandwidth threshold !\n");
 			unsigned long fd_back_iomax = do_sys_open(-100, "/sys/fs/cgroup/back/io.max", O_WRONLY | O_APPEND, 0644);
-			ksys_write(fd_back_iomax, "259:0 wbps=max rbps=max", 23);
+			ksys_write(fd_back_iomax, "259:0 wbps=max rbps=max riops=max wiops=max", 43);
 			ksys_close(fd_back_iomax);
 			THRESHOLD_ENABLED = false;
 		}
 	sleep:
-		ssleep(10);
+		if (THRESHOLD_ENABLED) ssleep(REGULATOR_INTERVAL);
+		else ssleep(REGULATOR_INTERVAL_WHEN_THRESHOLD)
 	}
 	// remove cgroup fs
 	// first detach pid from root cgroup
